@@ -4,6 +4,7 @@ import io
 import logging
 import time
 from typing import Optional, List, Dict, Any
+import hashlib
 
 import streamlit as st
 import pandas as pd
@@ -20,6 +21,60 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# Authentication Configuration
+VALID_USERS = {
+    "admin": "adminadmin123",  # Change these credentials in production
+}
+
+def hash_password(password: str) -> str:
+    """Hash password for secure comparison (for future enhancement)"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def verify_credentials(username: str, password: str) -> bool:
+    """Verify username and password"""
+    if username in VALID_USERS:
+        return VALID_USERS[username] == password
+    return False
+
+def login_form():
+    """Display login form"""
+    st.markdown("# 🔐 Login to InsightBot")
+    st.markdown("*Please enter your credentials to access the AI data analysis platform*")
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        with st.form("login_form"):
+            st.markdown("### 👤 User Authentication")
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            
+            login_button = st.form_submit_button("🔑 Login", use_container_width=True)
+            
+            if login_button:
+                if username and password:
+                    if verify_credentials(username, password):
+                        st.session_state.authenticated = True
+                        st.session_state.username = username
+                        st.success("✅ Login successful! Redirecting...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("❌ Invalid username or password")
+                else:
+                    st.error("⚠️ Please enter both username and password")
+
+def logout():
+    """Handle user logout"""
+    st.session_state.authenticated = False
+    st.session_state.username = None
+    # Clear all session data
+    for key in list(st.session_state.keys()):
+        if key not in ['authenticated', 'username']:
+            del st.session_state[key]
+    st.rerun()
+
 # Initialize HuggingFace Client (using OpenAI-compatible interface)
 client = OpenAI(
     base_url="https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.1-8B-Instruct/v1",
@@ -33,6 +88,18 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
+
+# Initialize authentication state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if "username" not in st.session_state:
+    st.session_state.username = None
+
+# Check authentication before showing main app
+if not st.session_state.authenticated:
+    login_form()
+    st.stop()
 
 # Initialize all session states
 if "uploaded_files" not in st.session_state:
@@ -216,7 +283,14 @@ def process_user_message(user_message: str) -> Dict[str, Any]:
 # Sidebar for File Upload and Management
 st.sidebar.markdown("# 🔍 InsightBot")
 st.sidebar.markdown("*AI-powered data analysis through natural conversation*")
+st.sidebar.markdown(f"**👤 Welcome, {st.session_state.username}!**")
 st.sidebar.markdown("---")
+
+# Logout button in sidebar
+if st.sidebar.button("🚪 Logout", use_container_width=True):
+    logout()
+
+st.sidebar.markdown("")
 
 st.sidebar.header("📁 File Management")
 st.sidebar.markdown("Upload your CSV file to start analyzing your data with AI insights.")
