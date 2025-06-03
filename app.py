@@ -11,8 +11,9 @@ import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
 
-from instruction import INSTRUCTIONS
-from code_executor import SecureCodeExecutor
+# Configure matplotlib before other imports for Streamlit Cloud compatibility
+import matplotlib
+matplotlib.use('Agg')
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -213,17 +214,25 @@ def parse_response_with_inline_visualizations(response_text: str):
         # Execute the code block if it's visualization code
         if code_content and st.session_state.code_executor.is_visualization_code(code_content):
             logger.info("Executing visualization code silently")
-            output, image_data = st.session_state.code_executor.execute_code(code_content)
-            if image_data:
-                content_segments.append({
-                    'type': 'image',
-                    'content': image_data
-                })
-            else:
-                # If execution failed, add error message inline
+            try:
+                output, image_data = st.session_state.code_executor.execute_code(code_content)
+                if image_data:
+                    content_segments.append({
+                        'type': 'image',
+                        'content': image_data
+                    })
+                else:
+                    # If execution failed, add a more user-friendly error message
+                    logger.warning(f"Visualization failed: {output}")
+                    content_segments.append({
+                        'type': 'text',
+                        'content': f"*[Unable to generate visualization: {output.split(':')[-1].strip() if ':' in output else 'Technical issue with chart generation'}]*"
+                    })
+            except Exception as e:
+                logger.error(f"Visualization execution error: {e}")
                 content_segments.append({
                     'type': 'text',
-                    'content': f"*[Visualization error: {output}]*"
+                    'content': "*[Visualization temporarily unavailable due to technical issues]*"
                 })
         else:
             # Non-visualization code - show as error (shouldn't happen with proper instructions)
@@ -417,7 +426,7 @@ for message in st.session_state.messages:
                             st.image(image_bytes, use_container_width=True)
                         except Exception as e:
                             logger.error(f"Error displaying inline image: {e}")
-                            st.error(f"Error displaying visualization: {e}")
+                            st.warning("⚠️ Visualization could not be displayed due to technical issues.")
             else:
                 # Fallback for old message format (backward compatibility)
                 st.markdown(message["content"])
@@ -462,7 +471,7 @@ if st.session_state.start_chat:
                         st.image(image_bytes, use_container_width=True)
                     except Exception as e:
                         logger.error(f"Error displaying inline image: {e}")
-                        st.error(f"Error displaying visualization: {e}")
+                        st.warning("⚠️ Visualization could not be displayed due to technical issues.")
 
 # Footer
 st.sidebar.markdown("### 🤖 Powered by")

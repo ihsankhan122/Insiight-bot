@@ -1,4 +1,7 @@
 import pandas as pd
+import matplotlib
+# Set backend before importing pyplot - crucial for Streamlit Cloud
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
@@ -35,6 +38,10 @@ class SecureCodeExecutor:
     
     def __init__(self):
         self.dataframe: Optional[pd.DataFrame] = None
+        # Configure matplotlib for Streamlit Cloud compatibility
+        plt.style.use('default')
+        sns.set_style("whitegrid")
+        
         self.execution_globals = {
             'pd': pd,
             'np': np,
@@ -105,6 +112,13 @@ class SecureCodeExecutor:
         image_buffer = None
         
         try:
+            # Clear any existing plots
+            plt.close('all')
+            
+            # Configure matplotlib for Streamlit Cloud
+            matplotlib.use('Agg')
+            plt.ioff()  # Turn off interactive mode
+            
             # Redirect stdout and stderr
             with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(error_buffer):
                 # Execute the code
@@ -112,13 +126,23 @@ class SecureCodeExecutor:
                 
                 # Check if a plot was created
                 if plt.get_fignums():
-                    # Save plot to buffer
+                    # Save plot to buffer with explicit settings for cloud compatibility
                     img_buffer = io.BytesIO()
-                    plt.savefig(img_buffer, format='png', dpi=150, bbox_inches='tight')
+                    plt.savefig(
+                        img_buffer, 
+                        format='png', 
+                        dpi=100,  # Reduced DPI for better cloud performance
+                        bbox_inches='tight',
+                        facecolor='white',
+                        edgecolor='none',
+                        pad_inches=0.1
+                    )
                     img_buffer.seek(0)
                     image_buffer = base64.b64encode(img_buffer.getvalue()).decode()
+                    img_buffer.close()
                     plt.close('all')  # Close all figures
-              # Get output
+            
+            # Get output
             output = output_buffer.getvalue()
             error = error_buffer.getvalue()
             
@@ -130,6 +154,10 @@ class SecureCodeExecutor:
         except Exception as e:
             plt.close('all')  # Clean up any open figures
             return f"Execution error: {str(e)}", None
+        finally:
+            # Ensure cleanup
+            output_buffer.close()
+            error_buffer.close()
     
     def get_dataframe_info(self) -> str:
         """Get basic information about the loaded dataframe"""
