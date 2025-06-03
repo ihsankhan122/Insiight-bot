@@ -15,6 +15,9 @@ from openai import OpenAI
 import matplotlib
 matplotlib.use('Agg')
 
+from instruction import INSTRUCTIONS
+from code_executor import SecureCodeExecutor
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
