@@ -44,7 +44,6 @@ def login_form():
     """Display login form"""
     st.markdown("# 🔐 Login to InsightBot")
     st.markdown("*Please enter your credentials to access the AI data analysis platform*")
-    st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -79,11 +78,8 @@ def logout():
             del st.session_state[key]
     st.rerun()
 
-# Initialize HuggingFace Client (using OpenAI-compatible interface)
-client = OpenAI(
-    base_url="https://router.huggingface.co/hf-inference/models/meta-llama/Llama-3.1-8B-Instruct/v1",
-    api_key=os.getenv("HUGGINGFACE_API_KEY"),
-)
+# Initialize OpenAI Client (official API, GPT-4o nano)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Initialize Streamlit Page
 st.set_page_config(
@@ -148,7 +144,7 @@ def delete_all_files():
     logger.info("All files deleted and executor reset.")
 
 def generate_llm_response(user_message: str, context: str = "") -> str:
-    """Generate response using HuggingFace LLAMA model"""
+    """Generate response using OpenAI GPT-4o nano model"""
     try:
         # Prepare the conversation context
         system_prompt = f"""
@@ -176,7 +172,7 @@ Make visualizations feel like a natural part of your explanation.
         
         # Generate response
         response = client.chat.completions.create(
-            model="meta-llama/Llama-3.1-8B-Instruct",
+            model="gpt-4.1-nano",
             messages=messages,
             stream=False,
             max_tokens=2048,
@@ -296,7 +292,6 @@ def process_user_message(user_message: str) -> Dict[str, Any]:
 st.sidebar.markdown("# 🔍 InsightBot")
 st.sidebar.markdown("*AI-powered data analysis through natural conversation*")
 st.sidebar.markdown(f"**👤 Welcome, {st.session_state.username}!**")
-st.sidebar.markdown("---")
 
 # Logout button in sidebar
 if st.sidebar.button("🚪 Logout", use_container_width=True):
@@ -359,31 +354,10 @@ if st.session_state.messages:
         logger.info("Chat history cleared.")
         st.sidebar.success("✅ Chat history cleared.")
 
-st.sidebar.markdown("---")
-
-# Help Section
-st.sidebar.markdown("### 💡 Quick Tips")
-st.sidebar.markdown("""
-**How to use InsightBot:**
-1. 📤 Upload your CSV file above
-2. 💬 Ask questions in natural language
-3. 📊 Get AI insights with visualizations
-4. 🔄 Continue the conversation for deeper analysis
-
-**Example questions:**
-- "What does this data look like?"
-- "Show me trends over time"
-- "Find correlations in the data"
-- "What are the key insights?"
-""")
-
-st.sidebar.markdown("---")
-
 # Main Chat Section
 st.title("🔍 InsightBot")
-st.markdown("*AI-powered data analysis through natural conversation*")
-st.markdown("**Powered by LLAMA & Pandas**")
-st.markdown("---")
+st.markdown("*AI-Powered Data Analysis through Natural Conversation*")
+
 
 if not st.session_state.uploaded_files:
     st.info("👆 Please upload a CSV file in the sidebar to start analyzing your data!")
@@ -475,11 +449,3 @@ if st.session_state.start_chat:
                     except Exception as e:
                         logger.error(f"Error displaying inline image: {e}")
                         st.warning("⚠️ Visualization could not be displayed due to technical issues.")
-
-# Footer
-st.sidebar.markdown("### 🤖 Powered by")
-st.sidebar.markdown("**🦙 HuggingFace LLAMA** - Advanced AI Language Model")
-st.sidebar.markdown("**🐼 Pandas & Python** - Secure Data Processing")
-st.sidebar.markdown("**📊 Matplotlib & Seaborn** - Beautiful Visualizations")
-st.sidebar.markdown("")
-st.sidebar.markdown("*Built for intuitive data exploration and analysis*")
