@@ -32,7 +32,7 @@ class SecureCodeExecutor:
         'import os', 'import sys', 'import subprocess', 'import shutil',
         'import socket', 'import urllib', 'import requests', 'import http',
         'open(', 'file(', 'input(', 'raw_input(', 'exec(', 'eval(',
-        '__import__', 'globals()', 'locals()', 'vars()', 'dir(',
+        'globals()', 'locals()', 'vars()', 'dir(',
         'getattr', 'setattr', 'delattr', 'hasattr'
     ]
     
@@ -54,7 +54,8 @@ class SecureCodeExecutor:
                 'min': min, 'max': max, 'sum': sum, 'abs': abs,
                 'round': round, 'sorted': sorted, 'enumerate': enumerate,
                 'zip': zip, 'range': range, 'type': type, 'isinstance': isinstance,
-                'print': print
+                'print': print,
+                '__import__': __import__
             }
         }
     
