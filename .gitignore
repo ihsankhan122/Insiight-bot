@@ -2,10 +2,3 @@
 venv/
 .streamlit/
 .venv
-__pycache__/
-*.pyc  
-*.pyo
-*.pyd
-__pycache__/
-__pycache__/code_executor.cpython-311.pyc
-__pycache__/instruction.cpython-311.pyc

@@ -186,21 +186,17 @@ Make visualizations feel like a natural part of your explanation.
         return f"Sorry, I encountered an error generating a response: {str(e)}"
 
 def parse_response_with_inline_visualizations(response_text: str):
-    """Parse response text and create inline content segments with visualizations"""
+    """Parse response text and create inline content segments with executed code outputs (text and images)"""
     import re
-    
-    # Pattern to match code blocks with their positions
-    pattern = r'```(?:python)?\s*(.*?)```'
-    
     content_segments = []
     last_end = 0
-    
-    # Find all code blocks and their positions
+    code_executor = st.session_state.code_executor
+    # Pattern to match code blocks with their positions
+    pattern = r'```(?:python)?\s*(.*?)```'
     for match in re.finditer(pattern, response_text, re.DOTALL):
         start_pos = match.start()
         end_pos = match.end()
         code_content = match.group(1).strip()
-        
         # Add text before this code block
         if start_pos > last_end:
             text_before = response_text[last_end:start_pos].strip()
@@ -209,39 +205,20 @@ def parse_response_with_inline_visualizations(response_text: str):
                     'type': 'text',
                     'content': text_before
                 })
-        
-        # Execute the code block if it's visualization code
-        if code_content and st.session_state.code_executor.is_visualization_code(code_content):
-            logger.info("Executing visualization code silently")
-            try:
-                output, image_data = st.session_state.code_executor.execute_code(code_content)
-                if image_data:
-                    content_segments.append({
-                        'type': 'image',
-                        'content': image_data
-                    })
-                else:
-                    # If execution failed, add a more user-friendly error message
-                    logger.warning(f"Visualization failed: {output}")
-                    content_segments.append({
-                        'type': 'text',
-                        'content': f"*[Unable to generate visualization: {output.split(':')[-1].strip() if ':' in output else 'Technical issue with chart generation'}]*"
-                    })
-            except Exception as e:
-                logger.error(f"Visualization execution error: {e}")
+        # Execute the code block (data analysis or visualization)
+        if code_content:
+            output, image_b64 = code_executor.execute_code(code_content)
+            if output and output.strip():
                 content_segments.append({
-                    'type': 'text',
-                    'content': "*[Visualization temporarily unavailable due to technical issues]*"
+                    'type': 'code_output',
+                    'content': output.strip()
                 })
-        else:
-            # Non-visualization code - show as error (shouldn't happen with proper instructions)
-            content_segments.append({
-                'type': 'text',
-                'content': f"*[Non-visualization code block removed]*"
-            })
-        
+            if image_b64:
+                content_segments.append({
+                    'type': 'image',
+                    'content': image_b64
+                })
         last_end = end_pos
-    
     # Add remaining text after the last code block
     if last_end < len(response_text):
         remaining_text = response_text[last_end:].strip()
@@ -250,14 +227,12 @@ def parse_response_with_inline_visualizations(response_text: str):
                 'type': 'text',
                 'content': remaining_text
             })
-    
     # If no code blocks found, return the entire text as one segment
     if not content_segments:
         content_segments.append({
             'type': 'text',
             'content': response_text
         })
-    
     return content_segments
 
 def process_user_message(user_message: str) -> Dict[str, Any]:
@@ -392,27 +367,17 @@ for message in st.session_state.messages:
             st.markdown(message["content"])
     elif message["type"] == "assistant":
         with st.chat_message("assistant"):
-            # Handle new content segments structure for inline visualization
-            if "content_segments" in message:
-                for segment in message["content_segments"]:
-                    if segment["type"] == "text":
-                        st.markdown(segment["content"])
-                    elif segment["type"] == "image":
-                        try:
-                            image_bytes = base64.b64decode(segment["content"])
-                            st.image(image_bytes, use_container_width=True)
-                        except Exception as e:
-                            logger.error(f"Error displaying inline image: {e}")
-                            st.warning("⚠️ Visualization could not be displayed due to technical issues.")
-            else:
-                # Fallback for old message format (backward compatibility)
-                st.markdown(message["content"])
-                if message.get("image"):
-                    try:
-                        image_bytes = base64.b64decode(message["image"])
-                        st.image(image_bytes, use_container_width=True)
-                    except Exception as e:
-                        logger.error(f"Error displaying image: {e}")
+            # Display each content segment (text, code output, image)
+            for segment in message.get("content_segments", []):
+                if segment["type"] == "text":
+                    st.markdown(segment["content"])
+                elif segment["type"] == "code_output":
+                    # Suppress generic success message
+                    if segment["content"].strip() != "Code executed successfully.":
+                        st.code(segment["content"], language="text")
+                elif segment["type"] == "image":
+                    import base64
+                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
 
 # User Input and Chat Process
 if st.session_state.start_chat:
@@ -420,32 +385,26 @@ if st.session_state.start_chat:
         # Add User Message
         st.session_state.messages.append({"type": "user", "content": prompt})
         logger.info("User input received: %s", prompt)
-        
         with st.chat_message("user"):
             st.markdown(prompt)
-        
         # Process the message
         result = process_user_message(prompt)
-        
         # Prepare assistant message with new content segments structure
         assistant_message = {
             "type": "assistant",
             "content_segments": result['content_segments'],
             "has_visualization": result['has_visualization']
         }
-        
         # Add assistant message to session
         st.session_state.messages.append(assistant_message)
-        
-        # Display assistant response with inline visualizations
+        # Display assistant response with inline visualizations and code outputs
         with st.chat_message("assistant"):
             for segment in result['content_segments']:
                 if segment["type"] == "text":
                     st.markdown(segment["content"])
+                elif segment["type"] == "code_output":
+                    if segment["content"].strip() != "Code executed successfully.":
+                        st.code(segment["content"], language="text")
                 elif segment["type"] == "image":
-                    try:
-                        image_bytes = base64.b64decode(segment["content"])
-                        st.image(image_bytes, use_container_width=True)
-                    except Exception as e:
-                        logger.error(f"Error displaying inline image: {e}")
-                        st.warning("⚠️ Visualization could not be displayed due to technical issues.")
+                    import base64
+                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
