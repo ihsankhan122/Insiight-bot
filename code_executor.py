@@ -96,8 +96,8 @@ class SecureCodeExecutor:
         
         return True
     
-    def execute_code(self, code: str) -> Tuple[str, Optional[str]]:
-        """Execute code safely and return results"""
+    def execute_code(self, code: str) -> Tuple[str, Optional[list]]:
+        """Execute code safely and return results, including all generated figures"""
         if self.dataframe is None:
             return "Error: No data loaded. Please upload a CSV file first.", None
         
@@ -110,7 +110,7 @@ class SecureCodeExecutor:
         # Capture output
         output_buffer = io.StringIO()
         error_buffer = io.StringIO()
-        image_buffer = None
+        images = []
         
         try:
             # Clear any existing plots
@@ -125,23 +125,23 @@ class SecureCodeExecutor:
                 # Execute the code
                 exec(code, self.execution_globals)
                 
-                # Check if a plot was created
-                if plt.get_fignums():
-                    # Save plot to buffer with explicit settings for cloud compatibility
+                # Save all open figures
+                for fignum in plt.get_fignums():
+                    fig = plt.figure(fignum)
                     img_buffer = io.BytesIO()
-                    plt.savefig(
-                        img_buffer, 
-                        format='png', 
-                        dpi=100,  # Reduced DPI for better cloud performance
+                    fig.savefig(
+                        img_buffer,
+                        format='png',
+                        dpi=100,
                         bbox_inches='tight',
                         facecolor='white',
                         edgecolor='none',
                         pad_inches=0.1
                     )
                     img_buffer.seek(0)
-                    image_buffer = base64.b64encode(img_buffer.getvalue()).decode()
+                    images.append(base64.b64encode(img_buffer.getvalue()).decode())
                     img_buffer.close()
-                    plt.close('all')  # Close all figures
+                plt.close('all')
             
             # Get output
             output = output_buffer.getvalue()
@@ -150,7 +150,7 @@ class SecureCodeExecutor:
             if error:
                 return f"Error: {error}", None
             
-            return output if output else "Code executed successfully.", image_buffer
+            return output if output else "Code executed successfully.", images if images else None
             
         except Exception as e:
             plt.close('all')  # Clean up any open figures

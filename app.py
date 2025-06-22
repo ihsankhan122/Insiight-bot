@@ -216,16 +216,26 @@ def parse_response_with_inline_visualizations(response_text: str):
         # Execute the code block (data analysis or visualization)
         if code_content:
             output, image_b64 = code_executor.execute_code(code_content)
-            if output and output.strip():
+            # Only add code_output if it's not just 'Code executed successfully.'
+            if output and output.strip() and output.strip().lower() != 'code executed successfully.':
                 content_segments.append({
                     'type': 'code_output',
                     'content': output.strip()
                 })
+            # Always add all images if present
             if image_b64:
-                content_segments.append({
-                    'type': 'image',
-                    'content': image_b64
-                })
+                # If image_b64 is a list, add as is; else, wrap in a list
+                if isinstance(image_b64, list):
+                    if image_b64:  # Only add if not empty
+                        content_segments.append({
+                            'type': 'image',
+                            'content': image_b64
+                        })
+                else:
+                    content_segments.append({
+                        'type': 'image',
+                        'content': [image_b64]
+                    })
         last_end = end_pos
     # Add remaining text after the last code block
     if last_end < len(response_text):
@@ -279,15 +289,37 @@ def export_chat_to_pdf(messages, filename="InsightBot_Report.pdf"):
     story = []
     story.append(Paragraph("<b>InsightBot Chat Transcript & Analysis Report</b>", styles['Title']))
     story.append(Spacer(1, 18))
+    # Add First Look Dashboard to PDF if present
+    if "first_look_segments" in st.session_state and st.session_state.first_look_segments:
+        story.append(Paragraph("<b>First Look Dashboard</b>", styles['Heading2']))
+        for seg in st.session_state.first_look_segments:
+            if seg["type"] == "text":
+                story.append(Paragraph(seg["content"], styles['Normal']))
+                story.append(Spacer(1, 6))
+            elif seg["type"] == "code_output":
+                story.append(Paragraph(f"<font face='Courier'>{seg['content']}</font>", styles['Code']))
+                story.append(Spacer(1, 6))
+            elif seg["type"] == "image":
+                try:
+                    for img_b64 in seg["content"]:
+                        imgdata = base64.b64decode(img_b64)
+                        img = PILImage.open(BytesIO(imgdata))
+                        img_io = BytesIO()
+                        img.save(img_io, format='PNG')
+                        img_io.seek(0)
+                        story.append(Image(img_io, width=400, height=250))
+                        story.append(Spacer(1, 8))
+                except Exception as e:
+                    story.append(Paragraph("[Image could not be rendered in PDF]", styles['Italic']))
+                    story.append(Spacer(1, 6))
+    # Add chat messages as usual
     for idx, message in enumerate(messages):
         if message["type"] == "user":
             story.append(Paragraph(f"<b>User:</b> {message['content']}", styles['Normal']))
             story.append(Spacer(1, 8))
         elif message["type"] == "assistant":
-            # Assistant message may have content_segments
             segments = message.get("content_segments")
             if not segments:
-                # fallback for old format
                 story.append(Paragraph(f"<b>InsightBot:</b> {message['content']}", styles['Normal']))
                 story.append(Spacer(1, 8))
             else:
@@ -301,13 +333,14 @@ def export_chat_to_pdf(messages, filename="InsightBot_Report.pdf"):
                         story.append(Spacer(1, 6))
                     elif seg["type"] == "image":
                         try:
-                            imgdata = base64.b64decode(seg["content"])
-                            img = PILImage.open(BytesIO(imgdata))
-                            img_io = BytesIO()
-                            img.save(img_io, format='PNG')
-                            img_io.seek(0)
-                            story.append(Image(img_io, width=400, height=250))
-                            story.append(Spacer(1, 8))
+                            for img_b64 in seg["content"]:
+                                imgdata = base64.b64decode(img_b64)
+                                img = PILImage.open(BytesIO(imgdata))
+                                img_io = BytesIO()
+                                img.save(img_io, format='PNG')
+                                img_io.seek(0)
+                                story.append(Image(img_io, width=400, height=250))
+                                story.append(Spacer(1, 8))
                         except Exception as e:
                             story.append(Paragraph("[Image could not be rendered in PDF]", styles['Italic']))
                             story.append(Spacer(1, 6))
@@ -371,32 +404,37 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
             st.sidebar.success(f"✅ File '{file_uploaded.name}' uploaded successfully!")
             st.session_state.start_chat = True
             # --- Unified First Look Dashboard with LLM Analysis ---
-            st.markdown("## 📊 First Look Dashboard: Automated Data Insights")
             dataset_context = st.session_state.code_executor.get_dataframe_info()
             llm_first_look_prompt = (
                 "You are a data analyst. Please provide an initial analysis of the uploaded dataset, "
                 "highlighting any detected anomalies, trends, or correlations. "
                 "Explain each finding in plain language for non-technical users. "
                 "Then, suggest a list of relevant questions or analysis prompts that would help a user explore their data and discover insights. "
-                "If you mention a visualization, always include the actual matplotlib or seaborn code block to generate it, using the columns you reference. "
+                "You must include at least one visualization code block (matplotlib or seaborn) in your response, using the columns you reference. "
                 "Format your response as follows:\n"
                 "### Initial Analysis\n<your analysis>\n\n### Suggested Questions\n- <question 1>\n- <question 2>\n..."
             )
-            llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
-            first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
-            for segment in first_look_segments:
-                if segment["type"] == "text":
-                    st.markdown(segment["content"])
-                elif segment["type"] == "code_output":
-                    if segment["content"].strip() != "Code executed successfully.":
-                        st.code(segment["content"], language="text")
-                elif segment["type"] == "image":
-                    import base64
-                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
+            with st.spinner("🤔 InsightBot is thinking..."):
+                llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
+                first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
+            # Do NOT add a default visualization if missing; LLM must always return at least one
+            st.session_state.first_look_segments = first_look_segments
         else:
             st.sidebar.error("❌ Failed to upload file.")
     else:
         st.sidebar.error("⚠️ Please select a file to upload.")
+
+# --- First Look Dashboard Display (always at the top, not in chat) ---
+if "first_look_segments" in st.session_state and st.session_state.first_look_segments:
+    st.markdown("## 📊 First Look Dashboard: Automated Data Insights")
+    for segment in st.session_state.first_look_segments:
+        if segment["type"] == "text":
+            st.markdown(segment["content"])
+        elif segment["type"] == "code_output":
+            st.code(segment["content"], language="text")
+        elif segment["type"] == "image":
+            for img_b64 in segment["content"]:
+                st.image(base64.b64decode(img_b64), use_container_width=True)
 
 # --- Current Dataset Section ---
 if st.session_state.uploaded_files:
@@ -470,27 +508,36 @@ for message in st.session_state.messages:
     elif message["type"] == "assistant":
         with st.chat_message("assistant"):
             # Display each content segment (text, code output, image)
-            for segment in message.get("content_segments", []):
+            segments = message.get("content_segments", [])
+            for segment in segments:
                 if segment["type"] == "text":
                     st.markdown(segment["content"])
-                elif segment["type"] == "code_output":
-                    # Suppress generic success message
-                    if segment["content"].strip() != "Code executed successfully.":
-                        st.code(segment["content"], language="text")
                 elif segment["type"] == "image":
                     import base64
-                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
+                    from io import BytesIO
+                    # Support both single image (str) and multiple images (list)
+                    images = segment["content"]
+                    if isinstance(images, list):
+                        for img_b64 in images:
+                            image_data = base64.b64decode(img_b64)
+                            st.image(BytesIO(image_data))
+                    else:
+                        image_data = base64.b64decode(images)
+                        st.image(BytesIO(image_data))
+                elif segment["type"] == "code_output":
+                    st.code(segment["content"], language="python")
 
 # User Input and Chat Process
 if st.session_state.start_chat:
-    if prompt := st.chat_input("💬 Ask me anything about your data! What insights would you like to discover?"):
+    if prompt := st.chat_input("\U0001F4AC Ask me anything about your data! What insights would you like to discover?"):
         # Add User Message
         st.session_state.messages.append({"type": "user", "content": prompt})
         logger.info("User input received: %s", prompt)
         with st.chat_message("user"):
             st.markdown(prompt)
-        # Process the message
-        result = process_user_message(prompt)
+        # Process the message with spinner
+        with st.spinner("🤔 InsightBot is thinking..."):
+            result = process_user_message(prompt)
         # Prepare assistant message with new content segments structure
         assistant_message = {
             "type": "assistant",
@@ -504,9 +551,17 @@ if st.session_state.start_chat:
             for segment in result['content_segments']:
                 if segment["type"] == "text":
                     st.markdown(segment["content"])
-                elif segment["type"] == "code_output":
-                    if segment["content"].strip() != "Code executed successfully.":
-                        st.code(segment["content"], language="text")
                 elif segment["type"] == "image":
                     import base64
-                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
+                    from io import BytesIO
+                    # Support both single image (str) and multiple images (list)
+                    images = segment["content"]
+                    if isinstance(images, list):
+                        for img_b64 in images:
+                            image_data = base64.b64decode(img_b64)
+                            st.image(BytesIO(image_data))
+                    else:
+                        image_data = base64.b64decode(images)
+                        st.image(BytesIO(image_data))
+                elif segment["type"] == "code_output":
+                    st.code(segment["content"], language="python")
