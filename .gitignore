@@ -1,4 +1,15 @@
+# Environment variables
 .env
+
+# Virtual environments
 venv/
-.streamlit/
 .venv
+
+# Streamlit
+.streamlit/
+
+# Python cache files
+__pycache__/ 
+
+# Development container
+.devcontainer/
