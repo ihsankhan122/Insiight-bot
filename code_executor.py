@@ -237,3 +237,98 @@ Sample Data:
     def get_dataframe(self) -> Optional[pd.DataFrame]:
         """Return the loaded pandas DataFrame, or None if not loaded."""
         return self.dataframe
+
+    def detect_anomalies_trends_correlations(self) -> list:
+        """Detect anomalies, trends, and correlations in the loaded DataFrame. Returns a list of plain-language findings."""
+        findings = []
+        df = self.dataframe
+        if df is None or df.empty:
+            return ["No data loaded to analyze."]
+
+        # Anomaly detection: Outliers (IQR method for numerical columns)
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        for col in num_cols:
+            series = df[col].dropna()
+            if len(series) < 10:
+                continue
+            q1 = series.quantile(0.25)
+            q3 = series.quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+            outliers = series[(series < lower) | (series > upper)]
+            if len(outliers) > 0:
+                findings.append(f"Column '{col}' has {len(outliers)} outlier value(s) (possible anomalies). Example: {outliers.iloc[0]:.2f}")
+
+        # Trend detection: Time or index-based trends
+        if 'date' in df.columns or 'Date' in df.columns:
+            date_col = 'date' if 'date' in df.columns else 'Date'
+            try:
+                df_sorted = df.sort_values(by=date_col)
+                for col in num_cols:
+                    if col == date_col:
+                        continue
+                    series = df_sorted[col].dropna()
+                    if len(series) > 1:
+                        corr = np.corrcoef(np.arange(len(series)), series)[0, 1]
+                        if abs(corr) > 0.5:
+                            trend = 'increasing' if corr > 0 else 'decreasing'
+                            findings.append(f"Column '{col}' shows a {trend} trend over time.")
+            except Exception:
+                pass
+        # General trend: Monotonicity or strong change
+        for col in num_cols:
+            series = df[col].dropna()
+            if len(series) > 1:
+                diff = np.diff(series)
+                if np.all(diff > 0):
+                    findings.append(f"Column '{col}' is strictly increasing.")
+                elif np.all(diff < 0):
+                    findings.append(f"Column '{col}' is strictly decreasing.")
+
+        # Correlation detection: Pearson correlation for numerical columns
+        if len(num_cols) > 1:
+            corr_matrix = df[num_cols].corr()
+            for i, col1 in enumerate(num_cols):
+                for col2 in num_cols[i+1:]:
+                    corr = corr_matrix.loc[col1, col2]
+                    if abs(corr) > 0.7:
+                        findings.append(f"Columns '{col1}' and '{col2}' are strongly correlated (correlation: {corr:.2f}).")
+
+        # Missing values
+        missing = df.isnull().sum()
+        for col, count in missing.items():
+            if count > 0:
+                findings.append(f"Column '{col}' has {count} missing value(s). Consider addressing these for better analysis.")
+
+        # If nothing found
+        if not findings:
+            findings.append("No significant anomalies, trends, or strong correlations detected in the dataset.")
+        return findings
+
+    def generate_suggested_questions(self, max_questions: int = 7) -> list:
+        """Generate a list of suggested questions/prompts based on the dataset's content."""
+        df = self.dataframe
+        if df is None or df.empty:
+            return ["No data loaded to suggest questions."]
+        questions = []
+        num_cols = df.select_dtypes(include=[np.number]).columns
+        cat_cols = df.select_dtypes(include=['object', 'category']).columns
+        # General questions
+        questions.append("What does this dataset contain?")
+        questions.append("What are the main columns and their types?")
+        if len(num_cols) > 0:
+            for col in num_cols[:2]:
+                questions.append(f"What is the distribution of '{col}'?")
+                questions.append(f"Are there any outliers in '{col}'?")
+            if len(num_cols) > 1:
+                questions.append(f"Are any numerical columns correlated?")
+        if len(cat_cols) > 0:
+            for col in cat_cols[:2]:
+                questions.append(f"What are the most common values in '{col}'?")
+                questions.append(f"How does '{col}' relate to other columns?")
+        if 'date' in df.columns or 'Date' in df.columns:
+            questions.append("Are there any trends over time?")
+        questions.append("Are there any missing values or anomalies in the data?")
+        # Limit to max_questions
+        return questions[:max_questions]

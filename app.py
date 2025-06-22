@@ -154,9 +154,7 @@ You are analyzing a dataset. Here's the current context:
 {context}
 
 Respond naturally as a data analyst. Focus on insights and explanations. 
-If a visualization would help, include ONLY the plotting code (matplotlib/seaborn).
-Never mention code execution or that you're generating code.
-Make visualizations feel like a natural part of your explanation.
+If a visualization would help, always include the actual matplotlib or seaborn code block to generate it, using the columns you reference. Never say you can't generate a plot. Never mention code execution or that you're generating code. Make visualizations feel like a natural part of your explanation.
 """
         
         messages = [
@@ -289,44 +287,31 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
         if upload_file_locally(file_uploaded):
             st.sidebar.success(f"✅ File '{file_uploaded.name}' uploaded successfully!")
             st.session_state.start_chat = True
-            # --- FIRST LOOK DASHBOARD ---
-            st.markdown("## 📊 First Look Dashboard")
-            df = st.session_state.code_executor.get_dataframe()
-            if df is not None:
-                st.markdown("### Key Statistics")
-                st.dataframe(df.describe(include='all').T, use_container_width=True)
-                st.markdown("### Outlier Detection")
-                import numpy as np
-                outlier_report = []
-                for col in df.select_dtypes(include=[np.number]).columns:
-                    col_data = df[col].dropna()
-                    if len(col_data) > 0:
-                        q1 = col_data.quantile(0.25)
-                        q3 = col_data.quantile(0.75)
-                        iqr = q3 - q1
-                        lower = q1 - 1.5 * iqr
-                        upper = q3 + 1.5 * iqr
-                        outliers = col_data[(col_data < lower) | (col_data > upper)]
-                        if not outliers.empty:
-                            outlier_report.append(f"- **{col}**: {len(outliers)} outlier(s) detected")
-                if outlier_report:
-                    st.markdown("\n".join(outlier_report))
-                else:
-                    st.markdown("No significant outliers detected in numeric columns.")
-                st.markdown("### Suggested Questions")
-                suggestions = []
-                for col in df.columns:
-                    if np.issubdtype(df[col].dtype, np.number):
-                        suggestions.append(f"- What is the distribution of **{col}**?")
-                        suggestions.append(f"- Are there any outliers in **{col}**?")
-                    else:
-                        suggestions.append(f"- What are the most common values in **{col}**?")
-                suggestions.append("- Are there any correlations between columns?")
-                suggestions.append("- Can you identify trends or patterns in the data?")
-                st.markdown("\n".join(suggestions))
-            else:
-                st.warning("Could not load the dataset for summary.")
-            # --- END FIRST LOOK DASHBOARD ---
+            # --- Unified First Look Dashboard with LLM Analysis ---
+            st.markdown("## 📊 First Look Dashboard: Automated Data Insights")
+            # Generate initial analysis and suggested questions using LLM
+            dataset_context = st.session_state.code_executor.get_dataframe_info()
+            llm_first_look_prompt = (
+                "You are a data analyst. Please provide an initial analysis of the uploaded dataset, "
+                "highlighting any detected anomalies, trends, or correlations. "
+                "Explain each finding in plain language for non-technical users. "
+                "Then, suggest a list of relevant questions or analysis prompts that would help a user explore their data and discover insights. "
+                "If you mention a visualization, always include the actual matplotlib or seaborn code block to generate it, using the columns you reference. "
+                "Format your response as follows:\n"
+                "### Initial Analysis\n<your analysis>\n\n### Suggested Questions\n- <question 1>\n- <question 2>\n..."
+            )
+            llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
+            # Parse and display the LLM response (with inline visualizations if any)
+            first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
+            for segment in first_look_segments:
+                if segment["type"] == "text":
+                    st.markdown(segment["content"])
+                elif segment["type"] == "code_output":
+                    if segment["content"].strip() != "Code executed successfully.":
+                        st.code(segment["content"], language="text")
+                elif segment["type"] == "image":
+                    import base64
+                    st.image(base64.b64decode(segment["content"]), use_container_width=True)
         else:
             st.sidebar.error("❌ Failed to upload file.")
     else:
