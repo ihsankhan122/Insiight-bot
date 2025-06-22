@@ -284,11 +284,49 @@ file_uploaded = st.sidebar.file_uploader(
 )
 
 # Upload Button
-if st.sidebar.button("📤 Upload File", use_container_width=True):
+if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
     if file_uploaded:
         if upload_file_locally(file_uploaded):
             st.sidebar.success(f"✅ File '{file_uploaded.name}' uploaded successfully!")
             st.session_state.start_chat = True
+            # --- FIRST LOOK DASHBOARD ---
+            st.markdown("## 📊 First Look Dashboard")
+            df = st.session_state.code_executor.get_dataframe()
+            if df is not None:
+                st.markdown("### Key Statistics")
+                st.dataframe(df.describe(include='all').T, use_container_width=True)
+                st.markdown("### Outlier Detection")
+                import numpy as np
+                outlier_report = []
+                for col in df.select_dtypes(include=[np.number]).columns:
+                    col_data = df[col].dropna()
+                    if len(col_data) > 0:
+                        q1 = col_data.quantile(0.25)
+                        q3 = col_data.quantile(0.75)
+                        iqr = q3 - q1
+                        lower = q1 - 1.5 * iqr
+                        upper = q3 + 1.5 * iqr
+                        outliers = col_data[(col_data < lower) | (col_data > upper)]
+                        if not outliers.empty:
+                            outlier_report.append(f"- **{col}**: {len(outliers)} outlier(s) detected")
+                if outlier_report:
+                    st.markdown("\n".join(outlier_report))
+                else:
+                    st.markdown("No significant outliers detected in numeric columns.")
+                st.markdown("### Suggested Questions")
+                suggestions = []
+                for col in df.columns:
+                    if np.issubdtype(df[col].dtype, np.number):
+                        suggestions.append(f"- What is the distribution of **{col}**?")
+                        suggestions.append(f"- Are there any outliers in **{col}**?")
+                    else:
+                        suggestions.append(f"- What are the most common values in **{col}**?")
+                suggestions.append("- Are there any correlations between columns?")
+                suggestions.append("- Can you identify trends or patterns in the data?")
+                st.markdown("\n".join(suggestions))
+            else:
+                st.warning("Could not load the dataset for summary.")
+            # --- END FIRST LOOK DASHBOARD ---
         else:
             st.sidebar.error("❌ Failed to upload file.")
     else:

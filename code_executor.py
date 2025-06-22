@@ -233,3 +233,7 @@ Sample Data:
             })
         
         return code_blocks
+    
+    def get_dataframe(self) -> Optional[pd.DataFrame]:
+        """Return the loaded pandas DataFrame, or None if not loaded."""
+        return self.dataframe
