@@ -320,22 +320,51 @@ st.sidebar.markdown("# 🔍 InsightBot")
 st.sidebar.markdown("*AI-powered data analysis through natural conversation*")
 st.sidebar.markdown(f"**👤 Welcome, {st.session_state.username}!**")
 
-# Logout button in sidebar
-if st.sidebar.button("🚪 Logout", use_container_width=True):
-    logout()
+# --- Emphasized Export as PDF Button ---
+if st.session_state.uploaded_files:
+    st.sidebar.divider()
+    st.sidebar.markdown("### 📄 Export Chat & Insights")
+    st.sidebar.markdown("Download your chat and dataset info as a PDF report.")
+    def get_pdf_buffer_for_export():
+        if st.session_state.messages:
+            return export_chat_to_pdf(st.session_state.messages)
+        else:
+            # Minimal PDF with just dataset info and file name
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=letter)
+            styles = getSampleStyleSheet()
+            story = []
+            story.append(Paragraph("<b>InsightBot Dataset Report</b>", styles['Title']))
+            story.append(Spacer(1, 18))
+            for file_info in st.session_state.uploaded_files:
+                story.append(Paragraph(f"<b>File:</b> {file_info['name']}", styles['Normal']))
+                story.append(Paragraph(f"<b>Size:</b> {round(file_info['size']/1024, 1)} KB", styles['Normal']))
+                story.append(Spacer(1, 8))
+            info = st.session_state.code_executor.get_dataframe_info()
+            story.append(Paragraph("<b>Dataset Information:</b>", styles['Heading2']))
+            story.append(Paragraph(f"<pre>{info}</pre>", styles['Code']))
+            doc.build(story)
+            buffer.seek(0)
+            return buffer
+    if st.sidebar.button("⬇️ Download PDF Report", key="export_pdf_btn_main", use_container_width=True):
+        pdf_buffer = get_pdf_buffer_for_export()
+        st.sidebar.download_button(
+            label="Download Chat & Insights PDF",
+            data=pdf_buffer,
+            file_name="InsightBot_Report.pdf",
+            mime="application/pdf"
+        )
 
-st.sidebar.markdown("")
+st.sidebar.divider()
 
+# --- File Upload Section ---
 st.sidebar.header("📁 File Management")
 st.sidebar.markdown("Upload your CSV file to start analyzing your data with AI insights.")
-
 file_uploaded = st.sidebar.file_uploader(
     "Choose a CSV file", 
     type=["csv"],
     help="Upload a CSV file to begin your data analysis conversation"
 )
-
-# Upload Button
 if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
     if file_uploaded:
         if upload_file_locally(file_uploaded):
@@ -343,7 +372,6 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
             st.session_state.start_chat = True
             # --- Unified First Look Dashboard with LLM Analysis ---
             st.markdown("## 📊 First Look Dashboard: Automated Data Insights")
-            # Generate initial analysis and suggested questions using LLM
             dataset_context = st.session_state.code_executor.get_dataframe_info()
             llm_first_look_prompt = (
                 "You are a data analyst. Please provide an initial analysis of the uploaded dataset, "
@@ -355,7 +383,6 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
                 "### Initial Analysis\n<your analysis>\n\n### Suggested Questions\n- <question 1>\n- <question 2>\n..."
             )
             llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
-            # Parse and display the LLM response (with inline visualizations if any)
             first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
             for segment in first_look_segments:
                 if segment["type"] == "text":
@@ -371,52 +398,38 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
     else:
         st.sidebar.error("⚠️ Please select a file to upload.")
 
-st.sidebar.markdown("")
-
-# Display uploaded files
+# --- Current Dataset Section ---
 if st.session_state.uploaded_files:
+    st.sidebar.divider()
     st.sidebar.markdown("### 📊 Current Dataset")
     for file_info in st.session_state.uploaded_files:
         file_size_kb = round(file_info['size'] / 1024, 1)
-        st.sidebar.markdown(f"📄 **{file_info['name']}**")
-        st.sidebar.markdown(f"   📏 Size: {file_size_kb} KB")
+        st.sidebar.markdown(f"📄 **{file_info['name']}**  ")
+        st.sidebar.markdown(f"<span style='font-size: 0.9em; color: #888;'>📏 {file_size_kb} KB</span>", unsafe_allow_html=True)
     st.sidebar.markdown("")
+    if st.sidebar.button("📈 View Dataset Info", use_container_width=True):
+        info = st.session_state.code_executor.get_dataframe_info()
+        st.sidebar.text_area("Dataset Information", info, height=200)
 
-# Dataset Info Button
-if st.session_state.uploaded_files and st.sidebar.button("📈 View Dataset Info", use_container_width=True):
-    info = st.session_state.code_executor.get_dataframe_info()
-    st.sidebar.text_area("Dataset Information", info, height=200)
+# --- Advanced Actions Section ---
+if st.session_state.uploaded_files or st.session_state.messages:
+    st.sidebar.divider()
+    with st.sidebar.expander("⚙️ Advanced Actions", expanded=False):
+        if st.session_state.uploaded_files:
+            if st.button("🗑️ Delete All Files", key="delete_files_btn", use_container_width=True):
+                delete_all_files()
+                st.session_state.start_chat = False
+                st.session_state.messages = []
+                st.session_state.conversation_history = []
+                st.success("✅ All files deleted and chat reset.")
+        if st.session_state.messages:
+            if st.button("🔄 Reset Chat", key="reset_chat_btn", use_container_width=True):
+                st.session_state.messages = []
+                st.session_state.conversation_history = []
+                logger.info("Chat history cleared.")
+                st.success("✅ Chat history cleared.")
 
-# Button to Delete All Files
-if st.session_state.uploaded_files:
-    st.sidebar.markdown("")
-    if st.sidebar.button("🗑️ Delete All Files", use_container_width=True):
-        delete_all_files()
-        st.session_state.start_chat = False
-        st.session_state.messages = []
-        st.session_state.conversation_history = []
-        st.sidebar.success("✅ All files deleted and chat reset.")
-
-# Reset Chat Button
-if st.session_state.messages:
-    st.sidebar.markdown("")
-    if st.sidebar.button("🔄 Reset Chat", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.conversation_history = []
-        logger.info("Chat history cleared.")
-        st.sidebar.success("✅ Chat history cleared.")
-
-# --- Export as PDF Button ---
-if st.session_state.messages:
-    st.sidebar.markdown("")
-    if st.sidebar.button("📄 Export as PDF", use_container_width=True):
-        pdf_buffer = export_chat_to_pdf(st.session_state.messages)
-        st.sidebar.download_button(
-            label="Download Chat & Insights PDF",
-            data=pdf_buffer,
-            file_name="InsightBot_Report.pdf",
-            mime="application/pdf"
-        )
+st.sidebar.divider()
 
 # Main Chat Section
 st.title("🔍 InsightBot")
