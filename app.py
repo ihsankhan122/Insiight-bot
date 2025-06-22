@@ -18,6 +18,16 @@ matplotlib.use('Agg')
 from instruction import INSTRUCTIONS
 from code_executor import SecureCodeExecutor
 
+# ReportLab imports for PDF export
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
+from io import BytesIO
+from PIL import Image as PILImage
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -261,6 +271,50 @@ def process_user_message(user_message: str) -> Dict[str, Any]:
     
     return result
 
+def export_chat_to_pdf(messages, filename="InsightBot_Report.pdf"):
+    """Generate a PDF report from chat messages including text, code, and images."""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = []
+    story.append(Paragraph("<b>InsightBot Chat Transcript & Analysis Report</b>", styles['Title']))
+    story.append(Spacer(1, 18))
+    for idx, message in enumerate(messages):
+        if message["type"] == "user":
+            story.append(Paragraph(f"<b>User:</b> {message['content']}", styles['Normal']))
+            story.append(Spacer(1, 8))
+        elif message["type"] == "assistant":
+            # Assistant message may have content_segments
+            segments = message.get("content_segments")
+            if not segments:
+                # fallback for old format
+                story.append(Paragraph(f"<b>InsightBot:</b> {message['content']}", styles['Normal']))
+                story.append(Spacer(1, 8))
+            else:
+                story.append(Paragraph(f"<b>InsightBot:</b>", styles['Normal']))
+                for seg in segments:
+                    if seg["type"] == "text":
+                        story.append(Paragraph(seg["content"], styles['Normal']))
+                        story.append(Spacer(1, 6))
+                    elif seg["type"] == "code_output":
+                        story.append(Paragraph(f"<font face='Courier'>{seg['content']}</font>", styles['Code']))
+                        story.append(Spacer(1, 6))
+                    elif seg["type"] == "image":
+                        try:
+                            imgdata = base64.b64decode(seg["content"])
+                            img = PILImage.open(BytesIO(imgdata))
+                            img_io = BytesIO()
+                            img.save(img_io, format='PNG')
+                            img_io.seek(0)
+                            story.append(Image(img_io, width=400, height=250))
+                            story.append(Spacer(1, 8))
+                        except Exception as e:
+                            story.append(Paragraph("[Image could not be rendered in PDF]", styles['Italic']))
+                            story.append(Spacer(1, 6))
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 # Sidebar for File Upload and Management
 st.sidebar.markdown("# 🔍 InsightBot")
 st.sidebar.markdown("*AI-powered data analysis through natural conversation*")
@@ -351,6 +405,18 @@ if st.session_state.messages:
         st.session_state.conversation_history = []
         logger.info("Chat history cleared.")
         st.sidebar.success("✅ Chat history cleared.")
+
+# --- Export as PDF Button ---
+if st.session_state.messages:
+    st.sidebar.markdown("")
+    if st.sidebar.button("📄 Export as PDF", use_container_width=True):
+        pdf_buffer = export_chat_to_pdf(st.session_state.messages)
+        st.sidebar.download_button(
+            label="Download Chat & Insights PDF",
+            data=pdf_buffer,
+            file_name="InsightBot_Report.pdf",
+            mime="application/pdf"
+        )
 
 # Main Chat Section
 st.title("🔍 InsightBot")
