@@ -392,11 +392,19 @@ st.sidebar.divider()
 
 # --- File Upload Section ---
 st.sidebar.header("📁 File Management")
-st.sidebar.markdown("Upload your CSV file to start analyzing your data with AI insights.")
+st.sidebar.markdown("Upload your data file to start analyzing with AI insights. Supported: CSV, Excel, JSON, XML, TXT, PDF.")
 file_uploaded = st.sidebar.file_uploader(
-    "Choose a CSV file", 
-    type=["csv"],
-    help="Upload a CSV file to begin your data analysis conversation"
+    "Choose a data file", 
+    type=["csv", "xls", "xlsx", "json", "xml", "txt", "pdf"],
+    help="Upload a CSV, Excel, JSON, XML, TXT, or PDF file to begin your data analysis conversation",
+    accept_multiple_files=False,
+    key=None,
+    label_visibility="visible",
+    disabled=False,
+    # Set max upload size to 1GB (Streamlit must also be configured via config.toml)
+    # This parameter is for clarity/documentation; Streamlit's config must be set for true effect
+    # See: https://docs.streamlit.io/library/advanced-features/configuration#set-configuration-options
+    # st.file_uploader does not have a max_size param, but we document it here
 )
 if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
     if file_uploaded:
@@ -417,7 +425,6 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
             with st.spinner("🤔 InsightBot is thinking..."):
                 llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
                 first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
-            # Do NOT add a default visualization if missing; LLM must always return at least one
             st.session_state.first_look_segments = first_look_segments
         else:
             st.sidebar.error("❌ Failed to upload file.")

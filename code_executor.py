@@ -60,14 +60,65 @@ class SecureCodeExecutor:
         }
     
     def load_dataframe(self, file_content: bytes, filename: str) -> bool:
-        """Load a CSV file into pandas DataFrame"""
+        """Load a file (CSV, Excel, JSON, XML, TXT, PDF) into pandas DataFrame or as text."""
+        import pdfplumber
+        import PyPDF2
+        import json
         try:
-            if filename.endswith('.csv'):
+            ext = filename.lower().split('.')[-1]
+            if ext == 'csv':
                 self.dataframe = pd.read_csv(io.BytesIO(file_content))
                 self.execution_globals['df'] = self.dataframe
                 return True
+            elif ext in ['xls', 'xlsx']:
+                self.dataframe = pd.read_excel(io.BytesIO(file_content))
+                self.execution_globals['df'] = self.dataframe
+                return True
+            elif ext == 'json':
+                # Try to load as DataFrame, fallback to text
+                try:
+                    self.dataframe = pd.read_json(io.BytesIO(file_content))
+                    self.execution_globals['df'] = self.dataframe
+                    return True
+                except Exception:
+                    # Try to load as plain text
+                    self.dataframe = None
+                    self.execution_globals['df'] = None
+                    self.text_content = file_content.decode(errors='ignore')
+                    return True
+            elif ext == 'xml':
+                self.dataframe = pd.read_xml(io.BytesIO(file_content))
+                self.execution_globals['df'] = self.dataframe
+                return True
+            elif ext == 'txt':
+                # Try to parse as CSV/TSV, else as plain text
+                try:
+                    self.dataframe = pd.read_csv(io.BytesIO(file_content), sep=None, engine='python')
+                    self.execution_globals['df'] = self.dataframe
+                    return True
+                except Exception:
+                    self.dataframe = None
+                    self.execution_globals['df'] = None
+                    self.text_content = file_content.decode(errors='ignore')
+                    return True
+            elif ext == 'pdf':
+                # Extract text from PDF using pdfplumber (preferred) or PyPDF2
+                try:
+                    with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                        text = "\n".join(page.extract_text() or '' for page in pdf.pages)
+                except Exception:
+                    # Fallback to PyPDF2
+                    try:
+                        reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+                        text = "\n".join(page.extract_text() or '' for page in reader.pages)
+                    except Exception as e:
+                        raise Exception(f"Failed to extract PDF text: {str(e)}")
+                self.dataframe = None
+                self.execution_globals['df'] = None
+                self.text_content = text
+                return True
             else:
-                raise ValueError("Only CSV files are supported")
+                raise ValueError("Unsupported file type. Supported: CSV, Excel, JSON, XML, TXT, PDF.")
         except Exception as e:
             raise Exception(f"Failed to load file: {str(e)}")
     
@@ -161,15 +212,12 @@ class SecureCodeExecutor:
             error_buffer.close()
     
     def get_dataframe_info(self) -> str:
-        """Get basic information about the loaded dataframe"""
-        if self.dataframe is None:
-            return "No data loaded."
-        
-        # Get basic stats for numerical columns
-        numerical_cols = self.dataframe.select_dtypes(include=[np.number]).columns
-        categorical_cols = self.dataframe.select_dtypes(include=['object']).columns
-        
-        info = f"""
+        """Get basic information about the loaded dataframe or text content."""
+        if self.dataframe is not None:
+            # For DataFrame
+            numerical_cols = self.dataframe.select_dtypes(include=[np.number]).columns
+            categorical_cols = self.dataframe.select_dtypes(include=['object']).columns
+            info = f"""
 Dataset Summary:
 - Shape: {self.dataframe.shape[0]} rows, {self.dataframe.shape[1]} columns
 - Numerical columns ({len(numerical_cols)}): {', '.join(numerical_cols[:5])}{'...' if len(numerical_cols) > 5 else ''}
@@ -181,8 +229,14 @@ Key Statistics:
 
 Sample Data:
 {self.dataframe.head(3).to_string()}
-        """
-        return info
+            """
+            return info
+        elif hasattr(self, 'text_content') and self.text_content:
+            # For PDF or TXT or fallback text
+            preview = self.text_content[:1000] + ('...' if len(self.text_content) > 1000 else '')
+            return f"Text file loaded. Preview (first 1000 chars):\n\n{preview}"
+        else:
+            return "No data loaded."
     
     def is_visualization_code(self, code: str) -> bool:
         """Check if code is primarily for visualization"""

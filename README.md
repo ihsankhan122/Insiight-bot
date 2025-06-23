@@ -43,6 +43,28 @@ InsightBot is an **AI-powered conversational data analysis assistant** designed 
 
 ---
 
+## 📂 **New in vNEXT: Multi-Format File Support**
+
+InsightBot now supports uploading and analyzing a wide range of file types:
+
+- **CSV** (Comma-Separated Values)
+- **Excel** (.xls, .xlsx)
+- **JSON** (JavaScript Object Notation)
+- **XML** (eXtensible Markup Language)
+- **TXT** (Plain Text, including CSV/TSV parsing or text preview)
+- **PDF** (Extracts and analyzes text content)
+
+**How it works:**
+- Upload any of the above file types in the sidebar.
+- Tabular formats (CSV, Excel, JSON, XML, TXT if possible) are loaded into a pandas DataFrame for analysis and visualization.
+- PDF and TXT files are extracted as plain text and previewed, with basic analysis and text search available.
+- All files are processed in a unified workflow—no need to switch modules.
+- Errors are handled gracefully if a file cannot be parsed.
+
+> This makes InsightBot even more versatile for business, research, and personal data exploration!
+
+---
+
 ## 💡 Usage Guide (Chatbot Only)
 
 1. **Upload Your Data**: Start by uploading a CSV file through the sidebar. The chatbot will automatically process your file and display a summary of its contents.
