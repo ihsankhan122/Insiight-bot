@@ -1,3 +1,30 @@
+"""
+SQLiteChatStorage: Database Management for InsightBot
+
+This module provides persistent storage for chat conversations, user data,
+and file metadata using SQLite database. It implements a complete chat
+management system with user authentication, message history, and file tracking.
+
+Features:
+- User management and authentication
+- Chat session creation and management
+- Message storage with content segments
+- File metadata tracking
+- Chat search and retrieval
+- Soft delete functionality
+
+Database Schema:
+- users: User account information
+- chats: Chat session metadata
+- messages: Individual chat messages
+- chat_files: File upload tracking
+
+Author: InsightBot Team
+Version: 2.0
+Created: 2025
+"""
+
+# Standard library imports
 import sqlite3
 import json
 from datetime import datetime
@@ -5,20 +32,49 @@ from contextlib import contextmanager
 from typing import List, Dict, Any, Optional
 import logging
 
+# Get logger for this module
 logger = logging.getLogger(__name__)
 
 class SQLiteChatStorage:
-    """SQLite-based chat storage for InsightBot"""
+    """
+    SQLite-based chat storage for InsightBot.
+    
+    This class manages all database operations for the chat system including:
+    - User account management
+    - Chat session creation and retrieval
+    - Message storage and loading
+    - File metadata tracking
+    - Search functionality
+    
+    Attributes:
+        db_path (str): Path to the SQLite database file
+    """
     
     def __init__(self, db_path="insightbot_chats.db"):
+        """
+        Initialize the chat storage system.
+        
+        Args:
+            db_path (str): Path to SQLite database file (default: insightbot_chats.db)
+        """
         self.db_path = db_path
         self.init_db()
     
     def init_db(self):
-        """Initialize database tables"""
+        """
+        Initialize database tables and indexes.
+        
+        Creates all necessary tables for the chat system:
+        - users: Store user account information
+        - chats: Store chat session metadata
+        - messages: Store individual chat messages
+        - chat_files: Store file upload metadata
+        
+        Also creates indexes for better query performance.
+        """
         try:
             with self.get_db() as conn:
-                # Users table
+                # Users table - stores user account information
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +83,7 @@ class SQLiteChatStorage:
                     )
                 """)
                 
-                # Chats table
+                # Chats table - stores chat session metadata
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS chats (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,26 +91,26 @@ class SQLiteChatStorage:
                         title TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        metadata TEXT,  -- JSON string
+                        metadata TEXT,  -- JSON string for additional data
                         is_active BOOLEAN DEFAULT 1,
                         FOREIGN KEY (user_id) REFERENCES users (id)
                     )
                 """)
                 
-                # Messages table
+                # Messages table - stores individual chat messages
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS messages (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         chat_id INTEGER,
                         message_type TEXT,  -- 'user' or 'assistant'
                         content TEXT,
-                        content_segments TEXT,  -- JSON for complex content
+                        content_segments TEXT,  -- JSON for complex content (images, code)
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (chat_id) REFERENCES chats (id)
                     )
                 """)
                 
-                # Chat files table
+                # Chat files table - stores file upload metadata
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS chat_files (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
