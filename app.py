@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Optional, List, Dict, Any
 import hashlib
+from datetime import datetime
 
 import streamlit as st
 import pandas as pd
@@ -17,6 +18,7 @@ matplotlib.use('Agg')
 
 from instruction import INSTRUCTIONS
 from code_executor import SecureCodeExecutor
+from chat_storage import SQLiteChatStorage
 
 # ReportLab imports for PDF export
 from reportlab.lib.pagesizes import letter
@@ -37,7 +39,7 @@ load_dotenv()
 
 # Authentication Configuration
 VALID_USERS = {
-    "admin": "adminadmin123",  # Change these credentials in production
+    "ihsankhan": "ergb4809uibewf",  # Change these credentials in production
 }
 
 def hash_password(password: str) -> str:
@@ -70,6 +72,8 @@ def login_form():
                     if verify_credentials(username, password):
                         st.session_state.authenticated = True
                         st.session_state.username = username
+                        # Set query param for session persistence
+                        st.query_params["auth_user"] = username
                         st.success("✅ Login successful! Redirecting...")
                         time.sleep(1)
                         st.rerun()
@@ -82,11 +86,156 @@ def logout():
     """Handle user logout"""
     st.session_state.authenticated = False
     st.session_state.username = None
+    # Clear query params for session persistence
+    st.query_params.clear()
     # Clear all session data
     for key in list(st.session_state.keys()):
         if key not in ['authenticated', 'username']:
             del st.session_state[key]
     st.rerun()
+
+def create_new_chat():
+    """Create a new chat session"""
+    # Save current chat if it exists and has messages
+    if st.session_state.current_chat_id and st.session_state.messages:
+        save_current_chat_messages()
+    
+    # Create new chat
+    metadata = {
+        "dataset_files": [f["name"] for f in st.session_state.uploaded_files],
+        "created_from": "new_chat_button"
+    }
+    
+    chat_title = f"Chat {datetime.now().strftime('%m/%d %H:%M')}"
+    st.session_state.current_chat_id = st.session_state.chat_storage.create_chat(
+        st.session_state.username, 
+        chat_title, 
+        metadata
+    )
+    
+    # Save file information if files are uploaded
+    if st.session_state.uploaded_files:
+        st.session_state.chat_storage.save_chat_files(
+            st.session_state.current_chat_id,
+            st.session_state.uploaded_files
+        )
+    
+    # Clear current messages and conversation history
+    st.session_state.messages = []
+    st.session_state.conversation_history = []
+    
+    logger.info(f"Created new chat {st.session_state.current_chat_id}")
+
+def save_current_chat_messages():
+    """Save current chat messages to database"""
+    if not st.session_state.current_chat_id or not st.session_state.messages:
+        return
+    
+    try:
+        # Get existing message count from database
+        existing_messages = st.session_state.chat_storage.load_chat_messages(st.session_state.current_chat_id)
+        existing_count = len(existing_messages)
+        current_count = len(st.session_state.messages)
+        
+        # Only save new messages that haven't been saved yet
+        if current_count > existing_count:
+            new_messages = st.session_state.messages[existing_count:]
+            
+            for message in new_messages:
+                if message["type"] == "user":
+                    st.session_state.chat_storage.save_message(
+                        st.session_state.current_chat_id,
+                        "user",
+                        message["content"]
+                    )
+                elif message["type"] == "assistant":
+                    content_segments = message.get("content_segments", [])
+                    # For storage, we'll save a text representation as the main content
+                    text_content = ""
+                    for segment in content_segments:
+                        if segment["type"] == "text":
+                            text_content += segment["content"] + "\n"
+                    
+                    st.session_state.chat_storage.save_message(
+                        st.session_state.current_chat_id,
+                        "assistant",
+                        text_content.strip(),
+                        content_segments
+                    )
+            
+            logger.info(f"Saved {len(new_messages)} new messages for chat {st.session_state.current_chat_id}")
+        else:
+            logger.info(f"No new messages to save for chat {st.session_state.current_chat_id}")
+            
+    except Exception as e:
+        logger.error(f"Failed to save chat messages: {e}")
+        st.error("Failed to save chat messages")
+
+def load_chat(chat_id: int):
+    """Load a chat and its messages"""
+    try:
+        # Save current chat first
+        if st.session_state.current_chat_id and st.session_state.messages:
+            save_current_chat_messages()
+        
+        # Load chat info
+        chat_info = st.session_state.chat_storage.get_chat_info(chat_id)
+        if not chat_info:
+            st.error("Chat not found")
+            return
+        
+        # Load messages
+        messages = st.session_state.chat_storage.load_chat_messages(chat_id)
+        
+        # Load files
+        files = st.session_state.chat_storage.load_chat_files(chat_id)
+        
+        # Update session state
+        st.session_state.current_chat_id = chat_id
+        st.session_state.messages = messages
+        
+        # Rebuild conversation history for LLM context
+        st.session_state.conversation_history = []
+        for msg in messages:
+            if msg["type"] == "user":
+                st.session_state.conversation_history.append({
+                    "role": "user", 
+                    "content": msg["content"]
+                })
+            elif msg["type"] == "assistant":
+                # Use the original content for conversation history
+                st.session_state.conversation_history.append({
+                    "role": "assistant", 
+                    "content": msg["content"]
+                })
+        
+        # Update uploaded files (though files themselves aren't reloaded into executor)
+        st.session_state.uploaded_files = files
+        
+        logger.info(f"Loaded chat {chat_id} with {len(messages)} messages")
+        st.success(f"Loaded chat: {chat_info['title']}")
+        st.rerun()
+        
+    except Exception as e:
+        logger.error(f"Failed to load chat {chat_id}: {e}")
+        st.error("Failed to load chat")
+
+def delete_chat(chat_id: int):
+    """Delete a chat"""
+    try:
+        success = st.session_state.chat_storage.delete_chat(chat_id, st.session_state.username)
+        if success:
+            # If we're deleting the current chat, reset to new chat
+            if st.session_state.current_chat_id == chat_id:
+                st.session_state.current_chat_id = None
+                st.session_state.messages = []
+                st.session_state.conversation_history = []
+            st.success("Chat deleted successfully")
+        else:
+            st.error("Failed to delete chat")
+    except Exception as e:
+        logger.error(f"Failed to delete chat {chat_id}: {e}")
+        st.error("Failed to delete chat")
 
 # Initialize OpenAI Client (official API, GPT-4o nano)
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -105,6 +254,19 @@ if "authenticated" not in st.session_state:
 
 if "username" not in st.session_state:
     st.session_state.username = None
+
+# Check for existing authentication in browser session
+if not st.session_state.authenticated:
+    # Try to restore authentication from query params or session
+    query_params = st.query_params
+    if "auth_user" in query_params:
+        stored_username = query_params["auth_user"]
+        if stored_username in VALID_USERS:
+            st.session_state.authenticated = True
+            st.session_state.username = stored_username
+            # Clean up the URL
+            st.query_params.clear()
+            st.rerun()
 
 # Check authentication before showing main app
 if not st.session_state.authenticated:
@@ -126,6 +288,16 @@ if "code_executor" not in st.session_state:
 
 if "conversation_history" not in st.session_state:
     st.session_state.conversation_history = []
+
+# Initialize chat storage
+if "chat_storage" not in st.session_state:
+    st.session_state.chat_storage = SQLiteChatStorage()
+
+if "current_chat_id" not in st.session_state:
+    st.session_state.current_chat_id = None
+
+if "show_chat_manager" not in st.session_state:
+    st.session_state.show_chat_manager = False
 
 # Helper functions
 def upload_file_locally(file) -> bool:
@@ -353,6 +525,58 @@ st.sidebar.markdown("# 🔍 InsightBot")
 st.sidebar.markdown("*AI-powered data analysis through natural conversation*")
 st.sidebar.markdown(f"**👤 Welcome, {st.session_state.username}!**")
 
+# Chat Management Section
+st.sidebar.divider()
+st.sidebar.markdown("### 💬 Chat Management")
+
+col1, col2 = st.sidebar.columns(2)
+with col1:
+    if st.button("🆕 New Chat", use_container_width=True):
+        create_new_chat()
+        st.rerun()
+
+with col2:
+    if st.button("📚 My Chats", use_container_width=True):
+        st.session_state.show_chat_manager = not st.session_state.show_chat_manager
+
+# Display current chat info
+if st.session_state.current_chat_id:
+    chat_info = st.session_state.chat_storage.get_chat_info(st.session_state.current_chat_id)
+    if chat_info:
+        st.sidebar.markdown(f"**Current:** {chat_info['title']}")
+
+# Chat Manager
+if st.session_state.show_chat_manager:
+    st.sidebar.markdown("#### 📋 Your Recent Chats")
+    user_chats = st.session_state.chat_storage.get_user_chats(st.session_state.username, limit=10)
+    
+    if user_chats:
+        for chat in user_chats:
+            chat_col1, chat_col2 = st.sidebar.columns([3, 1])
+            
+            with chat_col1:
+                # Create a shorter display title
+                display_title = chat['title']
+                if len(display_title) > 25:
+                    display_title = display_title[:22] + "..."
+                
+                if st.button(
+                    f"📄 {display_title}", 
+                    key=f"load_chat_{chat['id']}", 
+                    use_container_width=True,
+                    help=f"Messages: {chat['message_count']}, Files: {chat['file_count']}"
+                ):
+                    load_chat(chat['id'])
+                    st.session_state.show_chat_manager = False
+                    st.rerun()
+            
+            with chat_col2:
+                if st.button("🗑️", key=f"delete_chat_{chat['id']}", help="Delete chat"):
+                    delete_chat(chat['id'])
+                    st.rerun()
+    else:
+        st.sidebar.markdown("*No saved chats yet*")
+
 # --- Emphasized Export as PDF Button ---
 if st.session_state.uploaded_files:
     st.sidebar.divider()
@@ -411,6 +635,17 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
         if upload_file_locally(file_uploaded):
             st.sidebar.success(f"✅ File '{file_uploaded.name}' uploaded successfully!")
             st.session_state.start_chat = True
+            
+            # Create new chat for this file upload if we don't have one
+            if not st.session_state.current_chat_id:
+                create_new_chat()
+            else:
+                # Update existing chat with new file info
+                st.session_state.chat_storage.save_chat_files(
+                    st.session_state.current_chat_id,
+                    [st.session_state.uploaded_files[-1]]  # Just the latest file
+                )
+            
             # --- Unified First Look Dashboard with LLM Analysis ---
             dataset_context = st.session_state.code_executor.get_dataframe_info()
             llm_first_look_prompt = (
@@ -426,6 +661,20 @@ if st.sidebar.button("\U0001F4E4 Upload File", use_container_width=True):
                 llm_first_look_response = generate_llm_response(llm_first_look_prompt, dataset_context)
                 first_look_segments = parse_response_with_inline_visualizations(llm_first_look_response)
             st.session_state.first_look_segments = first_look_segments
+            
+            # Save the first look analysis as an assistant message
+            if st.session_state.current_chat_id:
+                text_content = ""
+                for segment in first_look_segments:
+                    if segment["type"] == "text":
+                        text_content += segment["content"] + "\n"
+                
+                st.session_state.chat_storage.save_message(
+                    st.session_state.current_chat_id,
+                    "assistant",
+                    f"📊 First Look Analysis:\n{text_content.strip()}",
+                    first_look_segments
+                )
         else:
             st.sidebar.error("❌ Failed to upload file.")
     else:
@@ -466,15 +715,35 @@ if st.session_state.uploaded_files or st.session_state.messages:
                 st.session_state.start_chat = False
                 st.session_state.messages = []
                 st.session_state.conversation_history = []
+                # Don't delete the chat, just clear the current session
                 st.success("✅ All files deleted and chat reset.")
         if st.session_state.messages:
             if st.button("🔄 Reset Chat", key="reset_chat_btn", use_container_width=True):
+                # Save current chat before resetting
+                if st.session_state.current_chat_id:
+                    save_current_chat_messages()
                 st.session_state.messages = []
                 st.session_state.conversation_history = []
                 logger.info("Chat history cleared.")
                 st.success("✅ Chat history cleared.")
+        
+        # Chat title update
+        if st.session_state.current_chat_id:
+            st.markdown("**📝 Update Chat Title:**")
+            chat_info = st.session_state.chat_storage.get_chat_info(st.session_state.current_chat_id)
+            if chat_info:
+                new_title = st.text_input("Chat Title", value=chat_info['title'], key="title_input")
+                if st.button("💾 Update Title", use_container_width=True):
+                    st.session_state.chat_storage.update_chat_title(st.session_state.current_chat_id, new_title)
+                    st.success("✅ Chat title updated!")
 
+# Logout button
 st.sidebar.divider()
+if st.sidebar.button("🚪 Logout", use_container_width=True, type="secondary"):
+    # Save current chat before logout
+    if st.session_state.current_chat_id and st.session_state.messages:
+        save_current_chat_messages()
+    logout()
 
 # Main Chat Section
 st.title("🔍 InsightBot")
@@ -537,8 +806,21 @@ for message in st.session_state.messages:
 # User Input and Chat Process
 if st.session_state.start_chat:
     if prompt := st.chat_input("\U0001F4AC Ask me anything about your data! What insights would you like to discover?"):
+        # Create a new chat if we don't have one
+        if not st.session_state.current_chat_id:
+            create_new_chat()
+        
         # Add User Message
         st.session_state.messages.append({"type": "user", "content": prompt})
+        
+        # Save user message to database immediately
+        if st.session_state.current_chat_id:
+            st.session_state.chat_storage.save_message(
+                st.session_state.current_chat_id,
+                "user",
+                prompt
+            )
+        
         logger.info("User input received: %s", prompt)
         with st.chat_message("user"):
             st.markdown(prompt)
@@ -553,6 +835,21 @@ if st.session_state.start_chat:
         }
         # Add assistant message to session
         st.session_state.messages.append(assistant_message)
+        
+        # Save assistant message to database immediately
+        if st.session_state.current_chat_id:
+            text_content = ""
+            for segment in result['content_segments']:
+                if segment["type"] == "text":
+                    text_content += segment["content"] + "\n"
+            
+            st.session_state.chat_storage.save_message(
+                st.session_state.current_chat_id,
+                "assistant",
+                text_content.strip(),
+                result['content_segments']
+            )
+        
         # Display assistant response with inline visualizations and code outputs
         with st.chat_message("assistant"):
             for segment in result['content_segments']:
