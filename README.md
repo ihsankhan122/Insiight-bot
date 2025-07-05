@@ -1,6 +1,6 @@
 # 📊 InsightBot: AI-Powered Data Analysis Chatbot
 
-## �️ Local Setup Instructions
+## Local Setup Instructions
 
 Follow these step-by-step instructions to set up InsightBot on your local machine:
 
