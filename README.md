@@ -31,25 +31,16 @@ Follow these step-by-step instructions to set up InsightBot on your local machin
 5. Click **Select Folder** to open the project
 
 ### **Step 4: Create Virtual Environment (VENV)**
-1. In VS Code, open the **Terminal** (`Terminal > New Terminal` or press `Ctrl+Shift+` `)
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   ```
-3. Activate the virtual environment:
-   - **Windows (PowerShell)**:
-     ```bash
-     .\venv\Scripts\Activate.ps1
-     ```
-   - **Windows (Command Prompt)**:
-     ```bash
-     venv\Scripts\activate.bat
-     ```
-4. You should see `(venv)` prefix in your terminal prompt
+1. Open the Command Palette again: Ctrl+Shift+P
+2. Type: Python: Create Environment
+3. Choose Venv as the environment type.
+4. Select the base Python interpreter you want to use.
+5. Select `Python 3.11.9`
+6. VS Code will automatically create and configure the virtual environment.
 
 ### **Step 5: Install Required Libraries**
 1. Ensure your virtual environment is activated (you should see `(venv)` in terminal)
-2. Install all dependencies from requirements.txt:
+2. Install all dependencies from requirements.txt: (In Terminal)
    ```bash
    pip install -r requirements.txt
    ```
