@@ -17,6 +17,7 @@ import base64
 import io
 import logging
 import time
+import re
 from typing import Optional, List, Dict, Any
 import hashlib
 from datetime import datetime
@@ -101,19 +102,45 @@ def login_form():
     Creates a centered login form with username and password fields.
     Handles authentication validation and session state management.
     """
-    st.markdown("# 🔐 Login to InsightBot")
+    # Hero Section with Project Branding
+    st.markdown("""
+    <div style='text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; margin-bottom: 2rem; color: white;'>
+        <h1 style='margin: 0; font-size: 3rem; font-weight: bold;'>🔍 InsightBot</h1>
+        <p style='margin: 0.5rem 0 0 0; font-size: 1.2rem; opacity: 0.9;'>AI-Powered Data Analysis Platform</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Login Section
+    st.markdown("## 🔐 Sign In to Continue")
     st.markdown("*Please enter your credentials to access the AI data analysis platform*")
     
     # Create centered columns for better UI layout
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
+        
         with st.form("login_form"):
-            st.markdown("### 👤 User Authentication")
-            username = st.text_input("Username", placeholder="Enter your username")
-            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            st.markdown("#### 👤 User Authentication")
+            st.markdown("*Enter your credentials to access the platform*")
             
-            login_button = st.form_submit_button("🔑 Login", use_container_width=True)
+            username = st.text_input(
+                "Username", 
+                placeholder="Enter your username",
+                help="Use your assigned username to access the platform"
+            )
+            password = st.text_input(
+                "Password", 
+                type="password", 
+                placeholder="Enter your password",
+                help="Enter your secure password"
+            )
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            login_button = st.form_submit_button(
+                "🔑 Sign In to InsightBot", 
+                use_container_width=True,
+                type="primary"
+            )
             
             if login_button:
                 if username and password:
@@ -123,13 +150,58 @@ def login_form():
                         st.session_state.username = username
                         # Set query param for session persistence across browser refreshes
                         st.query_params["auth_user"] = username
-                        st.success("✅ Login successful! Redirecting...")
+                        st.success("✅ Login successful! Redirecting to your dashboard...")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("❌ Invalid username or password")
+                        st.error("❌ Invalid username or password. Please try again.")
                 else:
                     st.error("⚠️ Please enter both username and password")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Welcome message and features - Moved below login
+    st.markdown("---")
+    st.markdown("## About InsightBot 🚀")
+    st.markdown("""
+    Transform your data into actionable insights through natural conversation. Upload your datasets and let AI guide you through comprehensive analysis.
+    """)
+    
+    # Feature highlights in columns
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("""
+        <div style='text-align: center; padding: 1.5rem; border: 2px solid #ffffff; border-radius: 10px; margin-bottom: 1rem; background: transparent;'>
+            <h3>💬 Chat Interface</h3>
+            <p style='font-size: 0.9rem; color: #666;'>Ask questions in natural language and get intelligent responses</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style='text-align: center; padding: 1.5rem; border: 2px solid #ffffff; border-radius: 10px; margin-bottom: 1rem; background: transparent;'>
+            <h3>📊 Smart Visualizations</h3>
+            <p style='font-size: 0.9rem; color: #666;'>Automatic charts and graphs based on your data patterns</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style='text-align: center; padding: 1.5rem; border: 2px solid #ffffff; border-radius: 10px; margin-bottom: 1rem; background: transparent;'>
+            <h3>📈 Deep Insights</h3>
+            <p style='font-size: 0.9rem; color: #666;'>Discover hidden patterns and trends in your datasets</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Footer information
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #666; font-size: 0.9rem; padding: 1rem 0;'>
+        <p><strong>Supported File Formats:</strong> CSV, Excel (.xlsx/.xls), JSON, XML, TXT, PDF</p>
+        <p><strong>Features:</strong> Natural Language Queries • Automatic Visualizations • Statistical Analysis • Export Reports</p>
+        <p style='margin-top: 1rem; font-size: 0.8rem;'>InsightBot v2.0 - AI-Powered Data Analysis Platform</p>
+    </div>
+    """, unsafe_allow_html=True)
 
 def logout():
     """
