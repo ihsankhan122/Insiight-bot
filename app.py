@@ -27,6 +27,7 @@ import streamlit as st
 import pandas as pd
 from dotenv import load_dotenv
 from openai import OpenAI
+from psq_analysis import analyze_psq  # NEW: PSQ analysis
 
 # Configure matplotlib before other imports for Streamlit Cloud compatibility
 import matplotlib
@@ -135,7 +136,6 @@ def login_form():
                 help="Enter your secure password"
             )
             
-            st.markdown("<br>", unsafe_allow_html=True)
             login_button = st.form_submit_button(
                 "🔑 Sign In to InsightBot", 
                 use_container_width=True,
@@ -973,6 +973,39 @@ if st.session_state.uploaded_files:
     if st.sidebar.button("📈 View Dataset Info", use_container_width=True):
         info = st.session_state.code_executor.get_dataframe_info()
         st.sidebar.text_area("Dataset Information", info, height=200)
+
+    # NEW: PSQ analysis trigger
+    st.sidebar.markdown("### 🧮 Satisfaction Analysis (PSQ)")
+    if st.sidebar.button("Run PSQ Analysis", use_container_width=True):
+        # Get dataframe from SecureCodeExecutor
+        df = None
+        if hasattr(st.session_state, "code_executor") and hasattr(st.session_state.code_executor, "get_dataframe"):
+            df = st.session_state.code_executor.get_dataframe()
+        if df is None or getattr(df, "empty", True):
+            st.sidebar.error("No tabular data loaded.")
+        else:
+            # Ensure chat exists to store the results
+            if not st.session_state.current_chat_id:
+                create_new_chat()
+            with st.spinner("Running PSQ analysis..."):
+                segments, meta = analyze_psq(df)
+            assistant_message = {
+                "type": "assistant",
+                "content_segments": segments,
+                "has_visualization": any(s.get("type") == "image" for s in segments),
+            }
+            st.session_state.messages.append(assistant_message)
+            # Persist to DB
+            if st.session_state.current_chat_id:
+                text_content = "\n".join(s["content"] for s in segments if s.get("type") == "text")
+                st.session_state.chat_storage.save_message(
+                    st.session_state.current_chat_id,
+                    "assistant",
+                    text_content.strip(),
+                    segments,
+                )
+            st.success("PSQ analysis complete.")
+            st.rerun()
 
 # --- Advanced Actions Section ---
 if st.session_state.uploaded_files or st.session_state.messages:
