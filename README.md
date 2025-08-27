@@ -477,4 +477,8 @@ InsightBot employs a sophisticated **multi-layered architecture** that seamlessl
 **Ready to transform your data analysis workflow? Upload your data and discover what insights await!**
 
 
+<<<<<<< HEAD
+=======
+> *InsightBot: Your AI partner for smarter, faster, and more accessible data analysis.*
+>>>>>>> f3f68c048284e5dd3020cc8b3f15ca0a6158a64a
 
