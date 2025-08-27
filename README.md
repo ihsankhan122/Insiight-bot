@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # 📊 InsightBot: AI-Powered Data Analysis Chatbot
 
 ## Local Setup Instructions
@@ -476,9 +476,5 @@ InsightBot employs a sophisticated **multi-layered architecture** that seamlessl
 
 **Ready to transform your data analysis workflow? Upload your data and discover what insights await!**
 
----
 
-> *InsightBot: Your AI partner for smarter, faster, and more accessible data analysis.*
-=======
-# Insiight-bot
->>>>>>> 162b186742ae1c16a547cacfe4f20fbc95c96f5c
+
